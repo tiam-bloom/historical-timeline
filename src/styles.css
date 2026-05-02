@@ -871,7 +871,7 @@ textarea {
   color: #28536b;
 }
 
-.tag--战争 {
+.tag--军事 {
   background: #f3e6df;
   color: #88452b;
 }
@@ -891,14 +891,19 @@ textarea {
   color: #765e1d;
 }
 
-.tag--社会 {
-  background: #e8ecdc;
-  color: #536729;
+.tag--外交 {
+  background: #e1eaf3;
+  color: #2a4a6b;
 }
 
 .importance {
   background: #eef1f1;
   color: #536169;
+}
+
+.importance--极高 {
+  background: #8b1a1a;
+  color: #fffaf0;
 }
 
 .importance--高 {
@@ -909,6 +914,11 @@ textarea {
 .importance--中 {
   background: #c89743;
   color: #1f2426;
+}
+
+.importance--低 {
+  background: #bfc9c2;
+  color: #536169;
 }
 
 .detail {

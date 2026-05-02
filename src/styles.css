@@ -174,9 +174,53 @@ h1 {
 
 .filter-row {
   display: grid;
-  grid-template-columns: repeat(5, minmax(100px, 1fr)) auto;
+  grid-template-columns: repeat(4, minmax(120px, 1fr)) auto;
   gap: 10px;
   align-items: end;
+}
+
+.century-range {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.century-range select {
+  flex: 1;
+  min-width: 0;
+}
+
+.century-range__sep {
+  color: #7a868b;
+  font-weight: 800;
+}
+
+.century-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.century-presets__btn {
+  min-height: 26px;
+  padding: 0 10px;
+  border: 1px solid rgba(42, 65, 72, 0.18);
+  border-radius: 999px;
+  background: transparent;
+  color: #52626b;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.century-presets__btn:hover {
+  background: #f4efe6;
+}
+
+.century-presets__btn.is-active {
+  border-color: #214c55;
+  background: #214c55;
+  color: #fffaf0;
 }
 
 label {

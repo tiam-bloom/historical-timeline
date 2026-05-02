@@ -77,50 +77,32 @@ function FigureMultiSelect({ selectedFigures, figureOptions, onFigureToggle }) {
   );
 }
 
-const CENTURY_PRESETS = [
-  { label: '全部', from: '', to: '' },
+const CENTURY_RANGES = [
+  { label: '全部时间', from: '', to: '' },
+  { label: '远古至先秦（前3世纪以前）', from: '', to: '前3世纪' },
+  { label: '秦汉至隋唐（前3世纪—10世纪）', from: '前3世纪', to: '10世纪' },
+  { label: '宋元明清（10世纪—19世纪）', from: '10世纪', to: '19世纪' },
+  { label: '近现代（19世纪以后）', from: '19世纪', to: '' },
   { label: '公元前', from: '', to: '前1世纪' },
-  { label: '古代', from: '', to: '前3世纪' },
-  { label: '近现代', from: '18世纪', to: '' },
-  { label: '当代', from: '20世纪', to: '' }
+  { label: '公元后（1世纪至今）', from: '1世纪', to: '' }
 ];
 
-function Filters({ filters, centuryOptions, figureOptions, onChange, onFigureToggle, onReset }) {
-  const handlePreset = (preset) => {
-    onChange('centuryFrom', preset.from);
-    onChange('centuryTo', preset.to);
-  };
-
+function Filters({ filters, figureOptions, onChange, onFigureToggle, onReset }) {
   return (
     <div className="filters" aria-label="时间线筛选">
       <div className="filter-row">
         <label>
-          <span>世纪范围</span>
-          <div className="century-range">
-            <select
-              value={filters.centuryFrom}
-              onChange={(event) => onChange('centuryFrom', event.target.value)}
-            >
-              <option value="">起始</option>
-              {centuryOptions.map((century) => (
-                <option value={century} key={century}>
-                  {century}
-                </option>
-              ))}
-            </select>
-            <span className="century-range__sep">—</span>
-            <select
-              value={filters.centuryTo}
-              onChange={(event) => onChange('centuryTo', event.target.value)}
-            >
-              <option value="">结束</option>
-              {centuryOptions.map((century) => (
-                <option value={century} key={century}>
-                  {century}
-                </option>
-              ))}
-            </select>
-          </div>
+          <span>时间范围</span>
+          <select
+            value={filters.centuryRange}
+            onChange={(event) => onChange('centuryRange', event.target.value)}
+          >
+            {CENTURY_RANGES.map((range) => (
+              <option value={range.label} key={range.label}>
+                {range.label}
+              </option>
+            ))}
+          </select>
         </label>
         <label>
           <span>类型</span>
@@ -156,22 +138,6 @@ function Filters({ filters, centuryOptions, figureOptions, onChange, onFigureTog
         <button className="button button--ghost" type="button" onClick={onReset}>
           重置
         </button>
-      </div>
-      <div className="century-presets">
-        {CENTURY_PRESETS.map((preset) => {
-          const isActive =
-            filters.centuryFrom === preset.from && filters.centuryTo === preset.to;
-          return (
-            <button
-              className={`century-presets__btn ${isActive ? 'is-active' : ''}`}
-              type="button"
-              key={preset.label}
-              onClick={() => handlePreset(preset)}
-            >
-              {preset.label}
-            </button>
-          );
-        })}
       </div>
     </div>
   );
@@ -522,8 +488,7 @@ function App() {
     type: '全部类型',
     importance: '全部等级',
     period: '全部时期',
-    centuryFrom: '',
-    centuryTo: '',
+    centuryRange: '全部时间',
     figures: []
   });
 
@@ -532,21 +497,8 @@ function App() {
     [activeTab, events]
   );
 
-  const periods = useMemo(() => [...new Set(scopedEvents.map((event) => event.period))], [scopedEvents]);
-
   const figureOptions = useMemo(
     () => [...new Set(scopedEvents.flatMap((event) => event.figures))].sort((a, b) => a.localeCompare(b, 'zh-CN')),
-    [scopedEvents]
-  );
-
-  const centuryOptions = useMemo(
-    () => [...new Set(scopedEvents.map((event) => getCenturyLabel(event.sortYear)))].sort(
-      (a, b) => {
-        const numA = parseInt(a.replace('前', ''), 10) * (a.startsWith('前') ? -1 : 1);
-        const numB = parseInt(b.replace('前', ''), 10) * (b.startsWith('前') ? -1 : 1);
-        return numA - numB;
-      }
-    ),
     [scopedEvents]
   );
 
@@ -556,22 +508,24 @@ function App() {
         const matchesType = filters.type === '全部类型' || event.type === filters.type;
         const matchesImportance =
           filters.importance === '全部等级' || event.importance === filters.importance;
-        const matchesPeriod = filters.period === '全部时期' || event.period === filters.period;
 
         let matchesCentury = true;
-        if (filters.centuryFrom || filters.centuryTo) {
-          const eventCentury = centuryToNum(getCenturyLabel(event.sortYear));
-          if (filters.centuryFrom && eventCentury < centuryToNum(filters.centuryFrom)) {
-            matchesCentury = false;
-          }
-          if (filters.centuryTo && eventCentury > centuryToNum(filters.centuryTo)) {
-            matchesCentury = false;
+        if (filters.centuryRange !== '全部时间') {
+          const range = CENTURY_RANGES.find((r) => r.label === filters.centuryRange);
+          if (range) {
+            const eventCentury = centuryToNum(getCenturyLabel(event.sortYear));
+            if (range.from && eventCentury < centuryToNum(range.from)) {
+              matchesCentury = false;
+            }
+            if (range.to && eventCentury > centuryToNum(range.to)) {
+              matchesCentury = false;
+            }
           }
         }
 
         const matchesFigures =
           filters.figures.length === 0 || filters.figures.some((figure) => event.figures.includes(figure));
-        return matchesType && matchesImportance && matchesPeriod && matchesCentury && matchesFigures;
+        return matchesType && matchesImportance && matchesCentury && matchesFigures;
       }),
     [filters, scopedEvents]
   );
@@ -604,7 +558,7 @@ function App() {
   const handleTabChange = (tabId) => {
     setActiveTab(tabId);
     setSelectedId(null);
-    setFilters({ type: '全部类型', importance: '全部等级', period: '全部时期', centuryFrom: '', centuryTo: '', figures: [] });
+    setFilters({ type: '全部类型', importance: '全部等级', period: '全部时期', centuryRange: '全部时间', figures: [] });
   };
 
   const handleFilterChange = (key, value) => {
@@ -624,7 +578,7 @@ function App() {
   };
 
   const handleReset = () => {
-    setFilters({ type: '全部类型', importance: '全部等级', period: '全部时期', centuryFrom: '', centuryTo: '', figures: [] });
+    setFilters({ type: '全部类型', importance: '全部等级', period: '全部时期', centuryRange: '全部时间', figures: [] });
   };
 
   const handleAddComment = (eventId, comment) => {
@@ -666,7 +620,6 @@ function App() {
         </div>
         <Filters
           filters={filters}
-          centuryOptions={centuryOptions}
           figureOptions={figureOptions}
           onChange={handleFilterChange}
           onFigureToggle={handleFigureToggle}

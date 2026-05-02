@@ -77,10 +77,21 @@ function FigureMultiSelect({ selectedFigures, figureOptions, onFigureToggle }) {
   );
 }
 
-function Filters({ filters, periods, figureOptions, onChange, onFigureToggle, onReset }) {
+function Filters({ filters, periods, centuryOptions, figureOptions, onChange, onFigureToggle, onReset }) {
   return (
     <div className="filters" aria-label="时间线筛选">
       <div className="filter-row">
+        <label>
+          <span>世纪</span>
+          <select value={filters.century} onChange={(event) => onChange('century', event.target.value)}>
+            <option value="全部世纪">全部世纪</option>
+            {centuryOptions.map((century) => (
+              <option value={century} key={century}>
+                {century}
+              </option>
+            ))}
+          </select>
+        </label>
         <label>
           <span>类型</span>
           <select value={filters.type} onChange={(event) => onChange('type', event.target.value)}>
@@ -100,17 +111,6 @@ function Filters({ filters, periods, figureOptions, onChange, onFigureToggle, on
             {importanceOptions.map((importance) => (
               <option value={importance} key={importance}>
                 {importance}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <span>时期</span>
-          <select value={filters.period} onChange={(event) => onChange('period', event.target.value)}>
-            <option value="全部时期">全部时期</option>
-            {periods.map((period) => (
-              <option value={period} key={period}>
-                {period}
               </option>
             ))}
           </select>
@@ -178,6 +178,11 @@ function getTimelineLayout(events, minYear, yearSpan, axisLength, viewMode, comp
       side
     };
   });
+}
+
+function getCenturyLabel(sortYear) {
+  const century = Math.ceil(Math.abs(sortYear) / 100);
+  return sortYear < 0 ? `前${century}世纪` : `${century}世纪`;
 }
 
 const ZOOM_MIN = 0.5;
@@ -466,6 +471,7 @@ function App() {
     type: '全部类型',
     importance: '全部等级',
     period: '全部时期',
+    century: '全部世纪',
     figures: []
   });
 
@@ -481,6 +487,17 @@ function App() {
     [scopedEvents]
   );
 
+  const centuryOptions = useMemo(
+    () => [...new Set(scopedEvents.map((event) => getCenturyLabel(event.sortYear)))].sort(
+      (a, b) => {
+        const numA = parseInt(a.replace('前', ''), 10) * (a.startsWith('前') ? -1 : 1);
+        const numB = parseInt(b.replace('前', ''), 10) * (b.startsWith('前') ? -1 : 1);
+        return numA - numB;
+      }
+    ),
+    [scopedEvents]
+  );
+
   const filteredEvents = useMemo(
     () =>
       scopedEvents.filter((event) => {
@@ -488,9 +505,11 @@ function App() {
         const matchesImportance =
           filters.importance === '全部等级' || event.importance === filters.importance;
         const matchesPeriod = filters.period === '全部时期' || event.period === filters.period;
+        const matchesCentury =
+          filters.century === '全部世纪' || getCenturyLabel(event.sortYear) === filters.century;
         const matchesFigures =
           filters.figures.length === 0 || filters.figures.some((figure) => event.figures.includes(figure));
-        return matchesType && matchesImportance && matchesPeriod && matchesFigures;
+        return matchesType && matchesImportance && matchesPeriod && matchesCentury && matchesFigures;
       }),
     [filters, scopedEvents]
   );
@@ -523,7 +542,7 @@ function App() {
   const handleTabChange = (tabId) => {
     setActiveTab(tabId);
     setSelectedId(null);
-    setFilters({ type: '全部类型', importance: '全部等级', period: '全部时期', figures: [] });
+    setFilters({ type: '全部类型', importance: '全部等级', period: '全部时期', century: '全部世纪', figures: [] });
   };
 
   const handleFilterChange = (key, value) => {
@@ -543,7 +562,7 @@ function App() {
   };
 
   const handleReset = () => {
-    setFilters({ type: '全部类型', importance: '全部等级', period: '全部时期', figures: [] });
+    setFilters({ type: '全部类型', importance: '全部等级', period: '全部时期', century: '全部世纪', figures: [] });
   };
 
   const handleAddComment = (eventId, comment) => {
@@ -586,6 +605,7 @@ function App() {
         <Filters
           filters={filters}
           periods={periods}
+          centuryOptions={centuryOptions}
           figureOptions={figureOptions}
           onChange={handleFilterChange}
           onFigureToggle={handleFigureToggle}

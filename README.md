@@ -40,5 +40,7 @@ pnpm build
     ├── App.jsx            # 应用逻辑与组件
     ├── styles.css         # 全局样式
     └── data/
-        └── events.js      # 事件数据与筛选常量
+        ├── events.js      # 筛选常量与数据聚合
+        ├── china.json     # 中国历史事件数据
+        └── world.json     # 世界历史事件数据
 ```

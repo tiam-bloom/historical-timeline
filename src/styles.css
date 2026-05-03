@@ -582,6 +582,11 @@ textarea {
 .timeline-scroll--horizontal {
   overscroll-behavior: contain;
   padding: 8px;
+  scrollbar-width: none;
+}
+
+.timeline-scroll--horizontal::-webkit-scrollbar {
+  display: none;
 }
 
 .timeline-scroll--vertical {

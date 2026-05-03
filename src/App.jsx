@@ -206,23 +206,48 @@ const ZOOM_MIN = 0.5;
 const ZOOM_MAX = 3;
 const ZOOM_STEP = 0.25;
 
-function TimelineControls({ viewMode, compactEvents, zoomLevel, onViewModeChange, onCompactEventsChange, onZoomChange }) {
+const SCALE_MIN = 0.3;
+const SCALE_MAX = 2.5;
+const SCALE_STEP = 0.1;
+
+function TimelineControls({ viewMode, compactEvents, zoomLevel, viewScale, onViewModeChange, onCompactEventsChange, onZoomChange, onViewScaleChange }) {
   return (
     <div className="timeline-toolbar" aria-label="时间线视图">
       <div>
         <strong>等比例时间轴</strong>
-        <span>滚轮缩放 | Shift+滚轮平移</span>
+        <span>滚轮缩放整体 | Shift+滚轮缩放横轴</span>
       </div>
       <div className="timeline-toolbar__actions">
-        <div className="zoom-controls" aria-label="时间轴缩放">
+        <div className="zoom-controls" aria-label="整体缩放">
+          <button
+            className="zoom-controls__btn"
+            type="button"
+            onClick={() => onViewScaleChange(Math.max(SCALE_MIN, +(viewScale - SCALE_STEP).toFixed(1)))}
+            disabled={viewScale <= SCALE_MIN}
+            aria-label="整体缩小"
+          >
+            <ZoomOut size={16} />
+          </button>
+          <span className="zoom-controls__label">{Math.round(viewScale * 100)}%</span>
+          <button
+            className="zoom-controls__btn"
+            type="button"
+            onClick={() => onViewScaleChange(Math.min(SCALE_MAX, +(viewScale + SCALE_STEP).toFixed(1)))}
+            disabled={viewScale >= SCALE_MAX}
+            aria-label="整体放大"
+          >
+            <ZoomIn size={16} />
+          </button>
+        </div>
+        <div className="zoom-controls" aria-label="横轴缩放">
           <button
             className="zoom-controls__btn"
             type="button"
             onClick={() => onZoomChange(Math.max(ZOOM_MIN, +(zoomLevel - ZOOM_STEP).toFixed(2)))}
             disabled={zoomLevel <= ZOOM_MIN}
-            aria-label="缩小"
+            aria-label="横轴缩小"
           >
-            <ZoomOut size={16} />
+            <StretchHorizontal size={16} />
           </button>
           <span className="zoom-controls__label">{Math.round(zoomLevel * 100)}%</span>
           <button
@@ -230,9 +255,9 @@ function TimelineControls({ viewMode, compactEvents, zoomLevel, onViewModeChange
             type="button"
             onClick={() => onZoomChange(Math.min(ZOOM_MAX, +(zoomLevel + ZOOM_STEP).toFixed(2)))}
             disabled={zoomLevel >= ZOOM_MAX}
-            aria-label="放大"
+            aria-label="横轴放大"
           >
-            <ZoomIn size={16} />
+            <StretchHorizontal size={16} />
           </button>
         </div>
         <label className="density-toggle">
@@ -266,7 +291,7 @@ function TimelineControls({ viewMode, compactEvents, zoomLevel, onViewModeChange
   );
 }
 
-function Timeline({ events, selectedId, onSelect, viewMode, compactEvents, zoomLevel, onZoomChange }) {
+function Timeline({ events, selectedId, onSelect, viewMode, compactEvents, zoomLevel, viewScale, onZoomChange, onViewScaleChange }) {
   if (events.length === 0) {
     return (
       <div className="empty-state">
@@ -288,30 +313,110 @@ function Timeline({ events, selectedId, onSelect, viewMode, compactEvents, zoomL
   const layoutItems = getTimelineLayout(sortedEvents, minYear, yearSpan, axisLength, viewMode, compactEvents);
   const maxLane = Math.max(...layoutItems.map((item) => item.lane), 0);
 
-  const handleWheel = (wheelEvent) => {
-    if (viewMode !== 'horizontal') {
-      return;
+  const scrollRef = useRef(null);
+  const dragRef = useRef({ active: false, startX: 0, startY: 0, scrollStartX: 0, scrollStartY: 0 });
+  const didDragRef = useRef(false);
+
+  const DRAG_THRESHOLD = 3;
+
+  const handleMouseDown = (mouseEvent) => {
+    if (viewMode !== 'horizontal') return;
+    if (mouseEvent.button !== 0) return;
+
+    const container = scrollRef.current;
+    dragRef.current = {
+      active: true,
+      startX: mouseEvent.clientX,
+      startY: mouseEvent.clientY,
+      scrollStartX: container.scrollLeft,
+      scrollStartY: container.scrollTop
+    };
+    didDragRef.current = false;
+    container.style.cursor = 'grabbing';
+    container.style.userSelect = 'none';
+  };
+
+  const handleMouseMove = (mouseEvent) => {
+    if (!dragRef.current.active) return;
+
+    const dx = mouseEvent.clientX - dragRef.current.startX;
+    const dy = mouseEvent.clientY - dragRef.current.startY;
+
+    if (Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD) {
+      didDragRef.current = true;
     }
 
-    wheelEvent.preventDefault();
+    const container = scrollRef.current;
+    container.scrollLeft = dragRef.current.scrollStartX - dx;
+    container.scrollTop = dragRef.current.scrollStartY - dy;
+  };
 
-    if (wheelEvent.shiftKey) {
-      // Shift + scroll: pan horizontally
-      const container = wheelEvent.currentTarget;
-      const delta = Math.abs(wheelEvent.deltaX) > Math.abs(wheelEvent.deltaY)
-        ? wheelEvent.deltaX
-        : wheelEvent.deltaY;
-      container.scrollLeft += delta;
-    } else {
-      // Normal scroll: zoom in/out like a map
-      const delta = wheelEvent.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP;
-      const next = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, +(zoomLevel + delta).toFixed(2)));
-      onZoomChange(next);
+  const handleMouseUp = () => {
+    if (!dragRef.current.active) return;
+    dragRef.current.active = false;
+
+    const container = scrollRef.current;
+    if (container) {
+      container.style.cursor = 'grab';
+      container.style.userSelect = '';
     }
   };
 
+  useEffect(() => {
+    if (viewMode !== 'horizontal') return;
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => window.removeEventListener('mouseup', handleMouseUp);
+  }, [viewMode]);
+
+  const zoomLevelRef = useRef(zoomLevel);
+  zoomLevelRef.current = zoomLevel;
+  const viewScaleRef = useRef(viewScale);
+  viewScaleRef.current = viewScale;
+
+  useEffect(() => {
+    if (viewMode !== 'horizontal') return;
+
+    const container = scrollRef.current;
+    if (!container) return;
+
+    const handleWheel = (wheelEvent) => {
+      wheelEvent.preventDefault();
+
+      if (wheelEvent.shiftKey) {
+        // Shift + scroll: zoom horizontal axis only
+        const delta = wheelEvent.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP;
+        const next = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, +(zoomLevelRef.current + delta).toFixed(2)));
+        onZoomChange(next);
+      } else {
+        // Normal scroll: overall zoom like a map
+        const rect = container.getBoundingClientRect();
+        const mouseX = wheelEvent.clientX - rect.left;
+
+        const delta = wheelEvent.deltaY > 0 ? -SCALE_STEP : SCALE_STEP;
+        const currentScale = viewScaleRef.current;
+        const nextScale = Math.min(SCALE_MAX, Math.max(SCALE_MIN, +(currentScale + delta).toFixed(1)));
+
+        // Keep mouse position stable during zoom
+        const beforeZoom = mouseX / currentScale;
+        onViewScaleChange(nextScale);
+        requestAnimationFrame(() => {
+          container.scrollLeft = beforeZoom * nextScale - mouseX;
+        });
+      }
+    };
+
+    container.addEventListener('wheel', handleWheel, { passive: false });
+    return () => container.removeEventListener('wheel', handleWheel);
+  }, [viewMode, onZoomChange, onViewScaleChange]);
+
   return (
-    <div className={`timeline-scroll timeline-scroll--${viewMode}`} onWheel={handleWheel}>
+    <div
+      ref={scrollRef}
+      className={`timeline-scroll timeline-scroll--${viewMode}`}
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      style={viewMode === 'horizontal' ? { zoom: viewScale, cursor: 'grab' } : undefined}
+    >
       <ol
         className={`timeline timeline--${viewMode} ${compactEvents ? 'timeline--compact' : ''}`}
         style={
@@ -339,7 +444,10 @@ function Timeline({ events, selectedId, onSelect, viewMode, compactEvents, zoomL
           <button
             className={`timeline-card ${selectedId === event.id ? 'is-active' : ''}`}
             type="button"
-            onClick={() => onSelect(event.id)}
+            onClick={() => {
+              if (didDragRef.current) return;
+              onSelect(event.id);
+            }}
             aria-pressed={selectedId === event.id}
           >
             <span className="timeline-card__dot" aria-hidden="true" />
@@ -489,6 +597,7 @@ function App() {
   const [viewMode, setViewMode] = useState('horizontal');
   const [compactEvents, setCompactEvents] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(1);
+  const [viewScale, setViewScale] = useState(1);
   const [filters, setFilters] = useState({
     type: '全部类型',
     importance: '全部等级',
@@ -631,7 +740,9 @@ function App() {
             viewMode={viewMode}
             compactEvents={compactEvents}
             zoomLevel={zoomLevel}
+            viewScale={viewScale}
             onZoomChange={setZoomLevel}
+            onViewScaleChange={setViewScale}
           />
         </div>
       </section>
@@ -639,9 +750,11 @@ function App() {
         viewMode={viewMode}
         compactEvents={compactEvents}
         zoomLevel={zoomLevel}
+        viewScale={viewScale}
         onViewModeChange={setViewMode}
         onCompactEventsChange={setCompactEvents}
         onZoomChange={setZoomLevel}
+        onViewScaleChange={setViewScale}
       />
       <EventModal event={selectedEvent} onClose={() => setSelectedId(null)} onAddComment={handleAddComment} />
     </main>

@@ -466,6 +466,12 @@ textarea {
   color: #33434b;
   font-size: 0.84rem;
   font-weight: 900;
+  cursor: pointer;
+}
+
+.density-toggle.is-active {
+  background: #214c55;
+  color: #fffaf0;
 }
 
 .density-toggle input {

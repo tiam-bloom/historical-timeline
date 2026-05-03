@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { BookOpen, Check, ChevronDown, Rows3, Search, Sparkles, StretchHorizontal, X, ZoomIn, ZoomOut } from 'lucide-react';
+import { ArrowDownUp, BookOpen, Check, ChevronDown, Rows3, Search, Sparkles, StretchHorizontal, X, ZoomIn, ZoomOut } from 'lucide-react';
 import { historyEvents, importanceOptions, tabs, typeOptions } from './data/events.js';
 
 function FigureMultiSelect({ selectedFigures, figureOptions, onFigureToggle }) {
@@ -150,7 +150,7 @@ function formatAxisYear(year) {
   return `${year}年`;
 }
 
-function getAxisTicks(minYear, maxYear) {
+function getAxisTicks(minYear, maxYear, reverse) {
   if (minYear === maxYear) {
     return [{ year: minYear, position: 0 }];
   }
@@ -159,10 +159,10 @@ function getAxisTicks(minYear, maxYear) {
   const span = maxYear - minYear;
   return Array.from({ length: tickCount }, (_, index) => {
     const year = Math.round(minYear + (span * index) / (tickCount - 1));
-    return {
-      year,
-      position: ((year - minYear) / span) * 100
-    };
+    const position = reverse
+      ? 100 - ((year - minYear) / span) * 100
+      : ((year - minYear) / span) * 100;
+    return { year, position };
   });
 }
 
@@ -171,12 +171,13 @@ function getAxisPositionStyle(viewMode, position) {
   return viewMode === 'horizontal' ? { left: axisPosition } : { top: axisPosition };
 }
 
-function getTimelineLayout(events, minYear, yearSpan, axisLength, viewMode, compactEvents) {
+function getTimelineLayout(events, minYear, yearSpan, axisLength, viewMode, compactEvents, reverse) {
   const lanesBySide = { before: [], after: [] };
   const minGap = viewMode === 'horizontal' ? 250 : compactEvents ? 112 : 158;
 
   return events.map((event, index) => {
-    const position = ((event.sortYear - minYear) / yearSpan) * 100;
+    const forwardPos = ((event.sortYear - minYear) / yearSpan) * 100;
+    const position = reverse ? 100 - forwardPos : forwardPos;
     const coordinate = (position / 100) * axisLength;
     const side = index % 2 === 0 ? 'before' : 'after';
     const laneIndex = lanesBySide[side].findIndex((lastCoordinate) => coordinate - lastCoordinate >= minGap);
@@ -210,7 +211,7 @@ const SCALE_MIN = 0.3;
 const SCALE_MAX = 2.5;
 const SCALE_STEP = 0.1;
 
-function TimelineControls({ viewMode, compactEvents, zoomLevel, viewScale, onViewModeChange, onCompactEventsChange, onZoomChange, onViewScaleChange }) {
+function TimelineControls({ viewMode, compactEvents, zoomLevel, viewScale, reverse, onViewModeChange, onCompactEventsChange, onReverseChange, onZoomChange, onViewScaleChange }) {
   return (
     <div className="timeline-toolbar" aria-label="时间线视图">
       <div>
@@ -260,6 +261,14 @@ function TimelineControls({ viewMode, compactEvents, zoomLevel, viewScale, onVie
             <StretchHorizontal size={16} />
           </button>
         </div>
+        <button
+          className={`density-toggle ${reverse ? 'is-active' : ''}`}
+          type="button"
+          onClick={() => onReverseChange(!reverse)}
+        >
+          <ArrowDownUp size={16} />
+          <span>倒序</span>
+        </button>
         <label className="density-toggle">
           <input
             type="checkbox"
@@ -291,7 +300,7 @@ function TimelineControls({ viewMode, compactEvents, zoomLevel, viewScale, onVie
   );
 }
 
-function Timeline({ events, selectedId, onSelect, viewMode, compactEvents, zoomLevel, viewScale, onZoomChange, onViewScaleChange }) {
+function Timeline({ events, selectedId, onSelect, viewMode, compactEvents, zoomLevel, viewScale, reverse, onZoomChange, onViewScaleChange }) {
   if (events.length === 0) {
     return (
       <div className="empty-state">
@@ -306,11 +315,11 @@ function Timeline({ events, selectedId, onSelect, viewMode, compactEvents, zoomL
   const minYear = sortedEvents[0].sortYear;
   const maxYear = sortedEvents[sortedEvents.length - 1].sortYear;
   const yearSpan = Math.max(maxYear - minYear, 1);
-  const ticks = getAxisTicks(minYear, maxYear);
+  const ticks = getAxisTicks(minYear, maxYear, reverse);
   const baseAxisLength =
     viewMode === 'horizontal' ? Math.max(1280, yearSpan * 0.82) : Math.max(900, yearSpan * 0.2);
   const axisLength = baseAxisLength * zoomLevel;
-  const layoutItems = getTimelineLayout(sortedEvents, minYear, yearSpan, axisLength, viewMode, compactEvents);
+  const layoutItems = getTimelineLayout(sortedEvents, minYear, yearSpan, axisLength, viewMode, compactEvents, reverse);
   const maxLane = Math.max(...layoutItems.map((item) => item.lane), 0);
 
   const scrollRef = useRef(null);
@@ -413,24 +422,34 @@ function Timeline({ events, selectedId, onSelect, viewMode, compactEvents, zoomL
       if (scrollMagnitude === 0) return;
 
       if (wheelEvent.shiftKey) {
-        // Shift + scroll: zoom horizontal axis only
+        // Shift + scroll: zoom horizontal axis only, centered on cursor
+        const rect = container.getBoundingClientRect();
+        const mouseX = wheelEvent.clientX - rect.left;
+        const centerX = rect.width / 2;
+
         const delta = scrollMagnitude > 0 ? -ZOOM_STEP : ZOOM_STEP;
-        const next = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, +(zoomLevelRef.current + delta).toFixed(2)));
-        onZoomChange(next);
+        const currentZoom = zoomLevelRef.current;
+        const nextZoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, +(currentZoom + delta).toFixed(2)));
+
+        const pointInContent = (container.scrollLeft + mouseX) / currentZoom;
+        onZoomChange(nextZoom);
+        requestAnimationFrame(() => {
+          container.scrollLeft = pointInContent * nextZoom - centerX;
+        });
       } else {
         // Normal scroll: overall zoom like a map
         const rect = container.getBoundingClientRect();
         const mouseX = wheelEvent.clientX - rect.left;
+        const centerX = rect.width / 2;
 
         const delta = scrollMagnitude > 0 ? -SCALE_STEP : SCALE_STEP;
         const currentScale = viewScaleRef.current;
         const nextScale = Math.min(SCALE_MAX, Math.max(SCALE_MIN, +(currentScale + delta).toFixed(1)));
 
-        // Keep mouse position stable during zoom
-        const beforeZoom = mouseX / currentScale;
+        const pointInContent = mouseX / currentScale;
         onViewScaleChange(nextScale);
         requestAnimationFrame(() => {
-          container.scrollLeft = beforeZoom * nextScale - mouseX;
+          container.scrollLeft = pointInContent * nextScale - centerX;
         });
       }
     };
@@ -628,6 +647,7 @@ function App() {
   const [compactEvents, setCompactEvents] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(1);
   const [viewScale, setViewScale] = useState(1);
+  const [reverseOrder, setReverseOrder] = useState(false);
   const [filters, setFilters] = useState({
     type: '全部类型',
     importance: '全部等级',
@@ -771,6 +791,7 @@ function App() {
             compactEvents={compactEvents}
             zoomLevel={zoomLevel}
             viewScale={viewScale}
+            reverse={reverseOrder}
             onZoomChange={setZoomLevel}
             onViewScaleChange={setViewScale}
           />
@@ -781,8 +802,10 @@ function App() {
         compactEvents={compactEvents}
         zoomLevel={zoomLevel}
         viewScale={viewScale}
+        reverse={reverseOrder}
         onViewModeChange={setViewMode}
         onCompactEventsChange={setCompactEvents}
+        onReverseChange={setReverseOrder}
         onZoomChange={setZoomLevel}
         onViewScaleChange={setViewScale}
       />

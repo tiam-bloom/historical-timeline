@@ -315,6 +315,7 @@ function Timeline({ events, selectedId, onSelect, viewMode, compactEvents, zoomL
 
   const scrollRef = useRef(null);
   const dragRef = useRef({ active: false, startX: 0, startY: 0, scrollStartX: 0, scrollStartY: 0 });
+  const rafRef = useRef(null);
   const didDragRef = useRef(false);
 
   const DRAG_THRESHOLD = 3;
@@ -336,6 +337,14 @@ function Timeline({ events, selectedId, onSelect, viewMode, compactEvents, zoomL
     container.style.userSelect = 'none';
   };
 
+  const applyDrag = () => {
+    const container = scrollRef.current;
+    const { startX, startY, scrollStartX, scrollStartY } = dragRef.current;
+    container.style.willChange = 'scroll-position';
+    container.scrollLeft = scrollStartX - (dragRef.current._lastX - startX);
+    container.scrollTop = scrollStartY - (dragRef.current._lastY - startY);
+  };
+
   const handleMouseMove = (mouseEvent) => {
     if (!dragRef.current.active) return;
 
@@ -346,19 +355,33 @@ function Timeline({ events, selectedId, onSelect, viewMode, compactEvents, zoomL
       didDragRef.current = true;
     }
 
-    const container = scrollRef.current;
-    container.scrollLeft = dragRef.current.scrollStartX - dx;
-    container.scrollTop = dragRef.current.scrollStartY - dy;
+    dragRef.current._lastX = mouseEvent.clientX;
+    dragRef.current._lastY = mouseEvent.clientY;
+
+    if (!rafRef.current) {
+      rafRef.current = requestAnimationFrame(() => {
+        rafRef.current = null;
+        if (dragRef.current.active) {
+          applyDrag();
+        }
+      });
+    }
   };
 
   const handleMouseUp = () => {
     if (!dragRef.current.active) return;
     dragRef.current.active = false;
 
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+
     const container = scrollRef.current;
     if (container) {
       container.style.cursor = 'grab';
       container.style.userSelect = '';
+      container.style.willChange = 'auto';
     }
   };
 
@@ -382,9 +405,16 @@ function Timeline({ events, selectedId, onSelect, viewMode, compactEvents, zoomL
     const handleWheel = (wheelEvent) => {
       wheelEvent.preventDefault();
 
+      // macOS trackpad: Shift converts vertical → horizontal scroll, so check both axes
+      const scrollMagnitude = Math.abs(wheelEvent.deltaY) >= Math.abs(wheelEvent.deltaX)
+        ? wheelEvent.deltaY
+        : wheelEvent.deltaX;
+
+      if (scrollMagnitude === 0) return;
+
       if (wheelEvent.shiftKey) {
         // Shift + scroll: zoom horizontal axis only
-        const delta = wheelEvent.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP;
+        const delta = scrollMagnitude > 0 ? -ZOOM_STEP : ZOOM_STEP;
         const next = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, +(zoomLevelRef.current + delta).toFixed(2)));
         onZoomChange(next);
       } else {
@@ -392,7 +422,7 @@ function Timeline({ events, selectedId, onSelect, viewMode, compactEvents, zoomL
         const rect = container.getBoundingClientRect();
         const mouseX = wheelEvent.clientX - rect.left;
 
-        const delta = wheelEvent.deltaY > 0 ? -SCALE_STEP : SCALE_STEP;
+        const delta = scrollMagnitude > 0 ? -SCALE_STEP : SCALE_STEP;
         const currentScale = viewScaleRef.current;
         const nextScale = Math.min(SCALE_MAX, Math.max(SCALE_MIN, +(currentScale + delta).toFixed(1)));
 

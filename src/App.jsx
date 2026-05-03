@@ -211,7 +211,7 @@ function TimelineControls({ viewMode, compactEvents, zoomLevel, onViewModeChange
     <div className="timeline-toolbar" aria-label="时间线视图">
       <div>
         <strong>等比例时间轴</strong>
-        <span>横向模式可用滚轮浏览时间跨度</span>
+        <span>滚轮缩放 | Shift+滚轮平移</span>
       </div>
       <div className="timeline-toolbar__actions">
         <div className="zoom-controls" aria-label="时间轴缩放">
@@ -266,7 +266,7 @@ function TimelineControls({ viewMode, compactEvents, zoomLevel, onViewModeChange
   );
 }
 
-function Timeline({ events, selectedId, onSelect, viewMode, compactEvents, zoomLevel }) {
+function Timeline({ events, selectedId, onSelect, viewMode, compactEvents, zoomLevel, onZoomChange }) {
   if (events.length === 0) {
     return (
       <div className="empty-state">
@@ -293,16 +293,21 @@ function Timeline({ events, selectedId, onSelect, viewMode, compactEvents, zoomL
       return;
     }
 
-    const container = wheelEvent.currentTarget;
-    const delta = Math.abs(wheelEvent.deltaX) > Math.abs(wheelEvent.deltaY)
-      ? wheelEvent.deltaX
-      : wheelEvent.deltaY;
-    if (delta === 0) {
-      return;
-    }
-
     wheelEvent.preventDefault();
-    container.scrollLeft += delta;
+
+    if (wheelEvent.shiftKey) {
+      // Shift + scroll: pan horizontally
+      const container = wheelEvent.currentTarget;
+      const delta = Math.abs(wheelEvent.deltaX) > Math.abs(wheelEvent.deltaY)
+        ? wheelEvent.deltaX
+        : wheelEvent.deltaY;
+      container.scrollLeft += delta;
+    } else {
+      // Normal scroll: zoom in/out like a map
+      const delta = wheelEvent.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP;
+      const next = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, +(zoomLevel + delta).toFixed(2)));
+      onZoomChange(next);
+    }
   };
 
   return (
@@ -591,33 +596,19 @@ function App() {
 
   return (
     <main className={`app-shell app-shell--${viewMode}`}>
-      <header className="app-header">
-        <div>
-          <span className="eyebrow">
-            <Sparkles size={16} />
-            历史节点档案
-          </span>
-          <h1>历史时间线</h1>
-        </div>
-        <p>按时代、类型和重要等级梳理中国与世界历史中的关键事件。</p>
-      </header>
-
-      <section className="control-strip" aria-label="历史时间线控制台">
-        <div className="scope-control">
-          <span className="control-label">历史范围</span>
-          <nav className="tabs" aria-label="历史范围">
-            {tabs.map((tab) => (
-              <button
-                className={activeTab === tab.id ? 'is-active' : ''}
-                type="button"
-                key={tab.id}
-                onClick={() => handleTabChange(tab.id)}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </nav>
-        </div>
+      <div className="floating-controls">
+        <nav className="tabs" aria-label="历史范围">
+          {tabs.map((tab) => (
+            <button
+              className={activeTab === tab.id ? 'is-active' : ''}
+              type="button"
+              key={tab.id}
+              onClick={() => handleTabChange(tab.id)}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </nav>
         <Filters
           filters={filters}
           figureOptions={figureOptions}
@@ -626,22 +617,13 @@ function App() {
           onReset={handleReset}
         />
         <div className="stat">
-          <BookOpen size={20} />
+          <BookOpen size={16} />
           <strong>{filteredEvents.length}</strong>
-          <span>{activeLabel}节点</span>
         </div>
-      </section>
+      </div>
 
       <section className="workspace">
         <div className="timeline-panel">
-          <TimelineControls
-            viewMode={viewMode}
-            compactEvents={compactEvents}
-            zoomLevel={zoomLevel}
-            onViewModeChange={setViewMode}
-            onCompactEventsChange={setCompactEvents}
-            onZoomChange={setZoomLevel}
-          />
           <Timeline
             events={filteredEvents}
             selectedId={selectedId}
@@ -649,9 +631,18 @@ function App() {
             viewMode={viewMode}
             compactEvents={compactEvents}
             zoomLevel={zoomLevel}
+            onZoomChange={setZoomLevel}
           />
         </div>
       </section>
+      <TimelineControls
+        viewMode={viewMode}
+        compactEvents={compactEvents}
+        zoomLevel={zoomLevel}
+        onViewModeChange={setViewMode}
+        onCompactEventsChange={setCompactEvents}
+        onZoomChange={setZoomLevel}
+      />
       <EventModal event={selectedEvent} onClose={() => setSelectedId(null)} onAddComment={handleAddComment} />
     </main>
   );
